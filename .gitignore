@@ -38,6 +38,7 @@
 #In fact, pretty much anything except CMakeLists.txt
 /CMakeFiles/
 /cmake_install.cmake
+/compile_commands.json
 
 #My kdevelop4 IDE project file
 *.kdev4

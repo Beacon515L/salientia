@@ -88,7 +88,7 @@ Ly::Ly(std::string filenm)
 
     bool Ly::checkIfNeedsReEngrave(){ return this->checkIfNeedsReEngrave(getLastEngraveTime()); }
     bool Ly::checkIfNeedsReEngrave(time_t lastEngraveTime){
-        bool retValue = (modifiedTime < lastEngraveTime);
+        bool retValue = (modifiedTime > lastEngraveTime && !noEngrave);
         if(!retValue){
             for(int i = 0; i < dependencies.size(); i++){
                 retValue = dependencies[i]->checkIfNeedsReEngrave(lastEngraveTime); if(retValue) break;}
