@@ -247,7 +247,7 @@ engrave.erase(remove_if(engrave.begin(), engrave.end(), up_to_date_check()),engr
 
 cerr << "Printing list of files needing engraving to stdout..." << endl << endl;
             for (int i = 0; i < engrave.size(); i++)
-                cout << engrave[i]->filename.c_str();
+                cout << engrave[i]->filename << '\0';
         
         }
         
