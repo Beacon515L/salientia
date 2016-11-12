@@ -87,8 +87,11 @@ Ly::Ly(std::string filenm)
 }
 
     bool Ly::checkIfNeedsReEngrave(){ return this->checkIfNeedsReEngrave(getLastEngraveTime()); }
+    
+    //Desired behaviour: engrave IF file OR any dependency is newer than output file OR no output file exists UNLESS %NOENGRAVE
     bool Ly::checkIfNeedsReEngrave(time_t lastEngraveTime){
-        bool retValue = (modifiedTime > lastEngraveTime && !noEngrave);
+        bool retValue = (modifiedTime > lastEngraveTime);
+        if(!retValue&&noEngrave) retValue = false; //Forces recursion on non-engraving files as this is likely a nested called from a file that does engrave
         if(!retValue){
             for(int i = 0; i < dependencies.size(); i++){
                 retValue = dependencies[i]->checkIfNeedsReEngrave(lastEngraveTime); if(retValue) break;}
@@ -97,10 +100,11 @@ Ly::Ly(std::string filenm)
     }
     
     time_t Ly::getLastEngraveTime(){time_t retValue;
-        string engraveFilePath = filename.substr(0,filename.length() - 3) + ".pdf";
+        if(noEngrave) retValue = 0;
+        else {string engraveFilePath = filename.substr(0,filename.length() - 3) + ".pdf";
         const char * efp = engraveFilePath.c_str();
         struct stat statBuf; if(stat(efp,&statBuf)==0) retValue = statBuf.st_mtime;
-        else retValue = 0;
+        else retValue = 0;}
         return retValue;
     }
     
