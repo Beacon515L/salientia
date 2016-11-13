@@ -39,6 +39,7 @@
 /CMakeFiles/
 /cmake_install.cmake
 /compile_commands.json
+/Makefile
 
 #My kdevelop4 IDE project file
 *.kdev4
