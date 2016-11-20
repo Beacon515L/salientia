@@ -15,18 +15,21 @@
 #include <functional>
 #include <iostream>
 #include <fstream>
-//#include <thread>
-//#include <mutex>
+#include <thread>
+#include <mutex>
 #include <vector>
 #include <string>
 #include "ly.h"
 #include "recurse.h"
 #include <sstream>
 #include <unistd.h>
+#include <libgen.h>
 using namespace std;
 
-bool overrideUTD = false, overrideNoEngrave = false, benchmark = false;
+bool overrideUTD = false, overrideNoEngrave = false, benchmark = false, outputList = false;
 int cpuMHZ; float cpuMHZRatioWith1GHz;
+static vector<Ly*> engrave; static mutex mtx;
+static vector<thread> threadList;
 
 //TODO
 /*
@@ -64,6 +67,38 @@ int engrave(vector<Ly*> files){time_t time1, time2, difftime, equivtime;
 }
 
 */
+int engrave_thread(int integer){Ly* filepath = NULL; int retValue = -1;
+    mtx.lock();
+    if(engrave.size() > 0){
+        filepath = engrave.back();
+        engrave.pop_back();
+        if(filepath != NULL){
+        cerr << endl << "ENGRAVING: " << filepath->filename << endl;
+        mtx.unlock();
+        string filepath_base = string(filepath->filename);
+        
+        const char* filepath_str = string(filepath_base.c_str()).c_str();
+        
+        filepath_base = string(dirname(const_cast<char*>(filepath_str)));
+        //cerr << filepath->filename << endl;
+        
+        string command = "lilypond --output=\"" + filepath_base + "\" --loglevel=NONE \"" + filepath->filename + "\"";
+       // mtx.lock(); cerr << command << endl; mtx.unlock();
+        retValue = system(command.c_str());
+        mtx.lock();
+        cerr << endl << ((retValue==0)?"DONE: ":"ERROR: ") << filepath->filename << " - " << engrave.size() << " files remain" << endl;
+        mtx.unlock();
+        engrave_thread(0);
+        }
+        else mtx.unlock();
+        
+    }
+    else mtx.unlock();
+    
+    return retValue;
+}
+
+
 
 Ly* ly_wrapper(string filenm){Ly* retValue = NULL;
     for (int i = 0; i < Ly::files.size(); i++)
@@ -78,9 +113,9 @@ return retValue;}
 int main(int argc, char **argv) {
     
     //vector<Ly*>* files = new vector<Ly*>();
-    vector<Ly*> engrave;
     
-    const string validFlags[] = {"-P", "-Iutd", "-Ine" //,"-M", "-B" //Disabled currently due to no performance-checking being done
+    
+    const string validFlags[] = {"-P", "-Iutd", "-Ine", "-o" //,"-M", "-B" //Disabled currently due to no performance-checking being done
     };
     const int validFlagsNum = 5;
     
@@ -96,6 +131,7 @@ int main(int argc, char **argv) {
    // << "-M         - Override forced single-core engrave memory limit (default 75% of memory, 0 disables serial-engraving)" << endl
     << "-Iutd      - Don't skip engrave of up-to-date files" << endl
     << "-Ine       - Don't skip engrave of files marked \%NOENGRAVE" << endl
+    << "-o         - Outputs list of files to stdout instead of directly dispatching engraves" << endl
   //  << "-B [MHz]   - Benchmark - runs single-core engrave and tags all files with memory usage and standardized CPU time (forces -Iutd -P 1 -M 0)" << endl
   //  << "             MHz is maximum CPU clock frequency of your machine (mandatory, autodetection to be implemented)"
   << endl;
@@ -118,8 +154,9 @@ int main(int argc, char **argv) {
                         case 0: if(++i<argc-1) threads = atoi(argv[i]); else retValue = 1; break; 
                         case 1: overrideUTD = true; break;
                         case 2: overrideNoEngrave = true; break;
-                     //   case 3: if(++i<argc-1) memoryLimit = atoi(argv[i]); else retValue = 1; break;
-                     //   case 4: benchmark = true; threads = 1; memoryLimit = 0; if(++i<argc-1) cpuMHZ = atoi(argv[i]); break;
+                        case 3: outputList = true; break;
+                     //   case 4: if(++i<argc-1) memoryLimit = atoi(argv[i]); else retValue = 1; break;
+                     //   case 5: benchmark = true; threads = 1; memoryLimit = 0; if(++i<argc-1) cpuMHZ = atoi(argv[i]); break;
                         
                     }
                     break;}
@@ -243,11 +280,19 @@ engrave.erase(remove_if(engrave.begin(), engrave.end(), up_to_date_check()),engr
 
                 cerr << engrave.size() << " files remain after removing up-to-date files" << endl;
 
-//CURRENTLY NOT USING C++ THREAD DISPATCH, INSTEAD USING XARGS
-
+//Thread dispatching
+if(outputList){
 cerr << "Printing list of files needing engraving to stdout..." << endl << endl;
             for (int i = 0; i < engrave.size(); i++)
-                cout << engrave[i]->filename << '\0';
+                cout << engrave[i]->filename << '\0';}
+else {
+    for(int i = 0; i < threads; i++)
+        threadList.push_back(thread(engrave_thread,0));
+    auto threadIterator = threadList.begin();
+    while (threadIterator != threadList.end())
+    { threadIterator->join(); threadIterator++;}
+    
+}
         
         }
         
