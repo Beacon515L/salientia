@@ -8,7 +8,7 @@ Currently Linux-only, working on Windows support once I finish everything else.
 
 Build dependencies: CMake, g++, nothing else I've noticed that your preferred distro's base-devel package wouldn't pull.
 
-Runtime dependencies: GNU Lilypond, obviously.  Will draw bash and xargs once I finish command delegation until such time as I work out how to do proper threads.
+Runtime dependencies: GNU Lilypond, and, well, bash, I guess?
 
 Code is very ugly and WIP and could stand redesign once it is functional.  I'll get around to that.
 
@@ -25,9 +25,9 @@ Simple as that.  This isn't a French historical melodrama in five acts.
 salientia [directory of .ly files]
 ```
 
-This will make Salientia recurse the specified directory, identify all .ly files and all other .ly files referenced by \include predicates, check each file's timestamps against those of their output files (currently, only PDF is checked, this might change soon; this is the same check Frescobaldi makes when deciding whether or not to display the PDF view) and finally spits a list of files needing to be engraved to stdout.  Once I finish that part, this list will be piped to xargs (and ultimately, C++ threads) for multithreaded engraving.
+This will make Salientia recurse the specified directory, identify all .ly files and all other .ly files referenced by \include predicates, check each file's timestamps against those of their output files (currently, only PDF is checked, this might change soon; this is the same check Frescobaldi makes when deciding whether or not to display the PDF view) and finally uses this list to spawn threads.  Optionally, it can alternatively be dumped to stdout (e.g. for piping to xargs or your preferred thread pool).
 
-There are flags but I'll get to implementing them later.
+There are flags in need of listing and testing as of latest comit. //TODO
 
 Many Lilypond users, and the Majora Opera team are one case, separate their musical definitions from score and part definitions.  This leads to some files not ever requiring engraving and including them in a large batch-process wastes time (as usually Lilypond will still fully initialize and produce no output, or even crash).  For such files, add:
 ```
@@ -36,8 +36,6 @@ Many Lilypond users, and the Majora Opera team are one case, separate their musi
 somewhere in the file, and Salientia will immediately prune it from the engraving list.  To Lilypond itself and any other frontend, %NOENGRAVE is just a comment and affects nothing else.
 
 ## TODO
-- Fix up-to-date check (nearly done)
-- Lilypond integration (xargs-level: trivial, threading level: later)
 - Cross-platform support
 - Checks for other output types (MIDI, Postscript, SVG. etc.)
 - Memory-checking and selective serial engraving (request by Miguel Jesus - AbsentiaDie)
