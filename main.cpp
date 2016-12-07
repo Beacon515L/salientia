@@ -24,11 +24,13 @@
 #include <sstream>
 #include <unistd.h>
 #include <libgen.h>
+#include <sys/stat.h> 
+#include <fcntl.h>
 using namespace std;
 
 bool overrideUTD = false, overrideNoEngrave = false, benchmark = false, outputList = false;
 int cpuMHZ; float cpuMHZRatioWith1GHz;
-static vector<Ly*> engrave; static mutex mtx;
+static vector<Ly*> engrave, serial_engrave_list; static mutex mtx;
 static vector<thread> threadList;
 
 //TODO
@@ -67,36 +69,97 @@ int engrave(vector<Ly*> files){time_t time1, time2, difftime, equivtime;
 }
 
 */
-int engrave_thread(int integer){Ly* filepath = NULL; int retValue = -1;
+
+string* obtain_command(bool serial){
+    int foo = 0;
+    string* command = new string[2];
+    command[0] = "";
+    command[1] = "";
+    Ly* filepath = NULL;
     mtx.lock();
-    if(engrave.size() > 0){
+    if((!serial && engrave.size() > 0) || (serial && serial_engrave_list.size() > 0)){
         filepath = engrave.back();
         engrave.pop_back();
         if(filepath != NULL){
-        cerr << endl << "ENGRAVING: " << filepath->filename << endl;
+            command[1] = filepath->filename;
+        cerr << endl << "ENGRAVING: " << command[1] << endl;
         mtx.unlock();
-        string filepath_base = string(filepath->filename);
+        string filepath_base = command[1];
         
         const char* filepath_str = string(filepath_base.c_str()).c_str();
         
         filepath_base = string(dirname(const_cast<char*>(filepath_str)));
-        //cerr << filepath->filename << endl;
+        //cerr << command[1] << endl;
         
-        string command = "lilypond --output=\"" + filepath_base + "\" --loglevel=NONE \"" + filepath->filename + "\"";
-       // mtx.lock(); cerr << command << endl; mtx.unlock();
-        retValue = system(command.c_str());
-        mtx.lock();
-        cerr << endl << ((retValue==0)?"DONE: ":"ERROR: ") << filepath->filename << " - " << engrave.size() << " files remain" << endl;
-        mtx.unlock();
-        engrave_thread(0);
+        command[0] = "lilypond --output=\"" + filepath_base + "\" --loglevel=NONE \"" + command[1] + "\"";
         }
         else mtx.unlock();
         
     }
     else mtx.unlock();
+    return command;
+}
+
+int engrave_thread(int integer){ int retValue = -1;
+        
+        string* command = obtain_command(false);
+        retValue = system(command[0].c_str());
+        mtx.lock();
+        if(command[1].length() > 0){
+        cerr << endl << ((retValue==0)?"DONE: ":"ERROR: ") << command[1] << " - " << engrave.size() << " files remain" << endl;
+        mtx.unlock();
+        engrave_thread(0);}
+        else mtx.unlock();
+        
     
     return retValue;
 }
+
+int serial_engrave(bool benchmark){
+    //TODO
+    return 0;
+}
+
+//Based on GreenScape's answer to http://stackoverflow.com/questions/22802902/how-to-get-pid-of-process-executed-with-system-command-in-c
+pid_t system2(const char * command, int * infp, int * outfp)
+{
+    int p_stdin[2];
+    int p_stdout[2];
+    pid_t pid;
+
+    if (pipe(p_stdin) == -1)
+        return -1;
+
+    if (pipe(p_stdout) == -1) {
+        close(p_stdin[0]);
+        close(p_stdin[1]);
+        return -1;
+    }
+
+    pid = fork();
+
+    if (pid < 0) {
+        close(p_stdin[0]);
+        close(p_stdin[1]);
+        close(p_stdout[0]);
+        close(p_stdout[1]);
+        return pid;
+    } else if (pid == 0) {
+        close(p_stdin[1]);
+        dup2(p_stdin[0], 0);
+        close(p_stdout[0]);
+        dup2(p_stdout[1], 1);
+        dup2(::open("/dev/null", O_RDONLY), 2);
+        /// Close all other descriptors for the safety sake.
+        for (int i = 3; i < 4096; ++i)
+            ::close(i);
+
+        setsid();
+        execl("/bin/sh", "sh", "-c", command, NULL);
+        _exit(1);
+    }
+}
+
 
 
 
@@ -285,9 +348,12 @@ if(outputList){
 cerr << "Printing list of files needing engraving to stdout..." << endl << endl;
             for (int i = 0; i < engrave.size(); i++)
                 cout << engrave[i]->filename << '\0';}
-else {
-    for(int i = 0; i < threads; i++)
-        threadList.push_back(thread(engrave_thread,0));
+else { int thread_spawns = engrave.size(); if(thread_spawns > threads) thread_spawns = threads;
+    cerr << "Spawning " << thread_spawns << " Lilypond threads" << endl << endl;
+    for(int i = 0; i < thread_spawns; i++)
+    {
+        //TODO - Populate the serial-engraving list as well
+        threadList.push_back(thread(engrave_thread,0));}
     auto threadIterator = threadList.begin();
     while (threadIterator != threadList.end())
     { threadIterator->join(); threadIterator++;}

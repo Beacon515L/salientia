@@ -67,7 +67,14 @@ Ly::Ly(std::string filenm)
         
         //cerr << strerror(errno) << endl;
         dependencyPaths[i] = ((rlpth == NULL) ? "" : string(rlpth));
+        if(rlpth==NULL) {
+            cerr << "WARNING: " << filenm << " has untrackable dependency " << includefnm << endl;
+            dependencyPaths.pop_back();
+            
+        }
     }
+    
+    
     for (int i = 0; i < dependencyPaths.size(); i++){ bool isSet = false;
         
         //Check global files array for corresponding filenames; assign if present, newly create object if not
