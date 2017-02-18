@@ -26,9 +26,12 @@
 #include <libgen.h>
 #include <sys/stat.h> 
 #include <fcntl.h>
+#include <cctype>
+#include <iomanip>
+
 using namespace std;
 
-bool overrideUTD = false, overrideNoEngrave = false, benchmark = false, outputList = false;
+bool overrideUTD = false, overrideNoEngrave = false, benchmark = false, outputList = false, pathRelativization = false;
 int cpuMHZ; float cpuMHZRatioWith1GHz;
 static vector<Ly*> engrave, serial_engrave_list; static mutex mtx;
 static vector<thread> threadList;
@@ -70,11 +73,35 @@ int engrave(vector<Ly*> files){time_t time1, time2, difftime, equivtime;
 
 */
 
+string url_encode(const string &value) {
+    ostringstream escaped;
+    escaped.fill('0');
+    escaped << hex;
+
+    for (string::const_iterator i = value.begin(), n = value.end(); i != n; ++i) {
+        string::value_type c = (*i);
+
+        // Keep alphanumeric and other accepted characters intact
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            escaped << c;
+            continue;
+        }
+
+        // Any other characters are percent-encoded
+        escaped << uppercase;
+        escaped << '%' << setw(2) << int((unsigned char) c);
+        escaped << nouppercase;
+    }
+
+    return escaped.str();
+}
+
 string* obtain_command(bool serial){
     int foo = 0;
-    string* command = new string[2];
+    string* command = new string[3];
     command[0] = "";
     command[1] = "";
+    command[2] = "";
     Ly* filepath = NULL;
     mtx.lock();
     if((!serial && engrave.size() > 0) || (serial && serial_engrave_list.size() > 0)){
@@ -89,6 +116,7 @@ string* obtain_command(bool serial){
         const char* filepath_str = string(filepath_base.c_str()).c_str();
         
         filepath_base = string(dirname(const_cast<char*>(filepath_str)));
+        command[2] = filepath_base;
         //cerr << command[1] << endl;
         
         command[0] = "lilypond --output=\"" + filepath_base + "\" --loglevel=NONE \"" + command[1] + "\"";
@@ -104,6 +132,42 @@ int engrave_thread(int integer){ int retValue = -1;
         
         string* command = obtain_command(false);
         retValue = system(command[0].c_str());
+        //Output file path relativization
+        
+      /*  if(pathRelativization){
+            ifstream originalPDF;
+            ofstream outputPDF;
+            string filename = command[2]+"/"+command[1];
+            string tmpfilename = filename+".tmp";
+            originalPDF.open(filename, ios::in | ios::binary | ios::ate);
+            outputPDF.open(tmpfilename, ios::out | ios::trunc | ios::binary);
+            if(originalPDF.is_open()&&outputPDF.is_open()){
+                streampos size = originalPDF.tellg();
+                if(size!=-1){
+                originalPDF.seekg (0, ios::beg);
+                char * memblock = new char[size]; 
+                originalPDF.read(memblock,size);
+                
+                const char * searchString = command[2].c_str();
+                int searchStringLength = command[2].length();
+              //TODO 
+              //  if(size > searchStringLength)
+               // for(s i = 0; i < (size - searchStringLength); i++){
+             //      if (searchString[0]==memblock[i]
+                    
+                //}
+                
+                delete[] memblock;
+            }
+                
+            }
+            
+            originalPDF.close();
+            outputPDF.close();
+            
+            
+        } */
+        
         mtx.lock();
         if(command[1].length() > 0){
         cerr << endl << ((retValue==0)?"DONE: ":"ERROR: ") << command[1] << " - " << engrave.size() << " files remain" << endl;
@@ -321,7 +385,8 @@ int main(int argc, char **argv) {
                 cerr << engrave.size() << " files to engrave" << endl;
                 
             //Trim files tagged %NOENGRAVE
-            struct no_engrave_check : public std::unary_function<const std::string&, bool> {
+                if(!overrideNoEngrave)
+                {  struct no_engrave_check : public std::unary_function<const std::string&, bool> {
             bool operator()(const Ly* file) const{
         return file->noEngrave;
     }
@@ -329,10 +394,11 @@ int main(int argc, char **argv) {
 
 engrave.erase(remove_if(engrave.begin(), engrave.end(), no_engrave_check()),engrave.end());
 
-            cerr << engrave.size() << " files remain after removing %NOENGRAVE-tagged files" << endl;
+            cerr << engrave.size() << " files remain after removing %NOENGRAVE-tagged files" << endl;}
             
             //Trim files that are up-to-date
-                struct up_to_date_check : public std::unary_function<const std::string&, bool> {
+            if(!overrideUTD)
+               { struct up_to_date_check : public std::unary_function<const std::string&, bool> {
             bool operator()(const Ly* file) const{
                 Ly* fileDeconst = const_cast<Ly*>(file);
         return !fileDeconst->checkIfNeedsReEngrave();
@@ -341,7 +407,7 @@ engrave.erase(remove_if(engrave.begin(), engrave.end(), no_engrave_check()),engr
 
 engrave.erase(remove_if(engrave.begin(), engrave.end(), up_to_date_check()),engrave.end());
 
-                cerr << engrave.size() << " files remain after removing up-to-date files" << endl;
+                cerr << engrave.size() << " files remain after removing up-to-date files" << endl;}
 
 //Thread dispatching
 if(outputList){
@@ -359,6 +425,7 @@ else { int thread_spawns = engrave.size(); if(thread_spawns > threads) thread_sp
     { threadIterator->join(); threadIterator++;}
     
 }
+
         
         }
         
