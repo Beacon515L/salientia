@@ -31,10 +31,11 @@
 
 using namespace std;
 
-bool overrideUTD = false, overrideNoEngrave = false, benchmark = false, outputList = false, pathRelativization = false;
+bool overrideUTD = false, overrideNoEngrave = false, benchmark = false, outputList = false, pathRelativization = false, custom_args = false;
 int cpuMHZ; float cpuMHZRatioWith1GHz;
 static vector<Ly*> engrave, serial_engrave_list; static mutex mtx;
 static vector<thread> threadList;
+string extra_commands = "";
 
 //TODO
 /*
@@ -119,7 +120,7 @@ string* obtain_command(bool serial){
         command[2] = filepath_base;
         //cerr << command[1] << endl;
         
-        command[0] = "lilypond --output=\"" + filepath_base + "\" --loglevel=NONE \"" + command[1] + "\"";
+        command[0] = "lilypond " + extra_commands + "--output=\"" + filepath_base + "\" --loglevel=NONE \"" + command[1] + "\"";
         }
         else mtx.unlock();
         
@@ -242,7 +243,7 @@ int main(int argc, char **argv) {
     //vector<Ly*>* files = new vector<Ly*>();
     
     
-    const string validFlags[] = {"-P", "-Iutd", "-Ine", "-o" //,"-M", "-B" //Disabled currently due to no performance-checking being done
+    const string validFlags[] = {"-P", "-Iutd", "-Ine", "-o", "--args" //,"-M", "-B" //Disabled currently due to no performance-checking being done
     };
     const int validFlagsNum = 5;
     
@@ -259,6 +260,7 @@ int main(int argc, char **argv) {
     << "-Iutd      - Don't skip engrave of up-to-date files" << endl
     << "-Ine       - Don't skip engrave of files marked \%NOENGRAVE" << endl
     << "-o         - Outputs list of files to stdout instead of directly dispatching engraves" << endl
+    << "--args     - Bypasses sanity-checking and supplies all unsupported arguments directly to the Lilypond threads" << endl
   //  << "-B [MHz]   - Benchmark - runs single-core engrave and tags all files with memory usage and standardized CPU time (forces -Iutd -P 1 -M 0)" << endl
   //  << "             MHz is maximum CPU clock frequency of your machine (mandatory, autodetection to be implemented)"
   << endl;
@@ -282,11 +284,14 @@ int main(int argc, char **argv) {
                         case 1: overrideUTD = true; break;
                         case 2: overrideNoEngrave = true; break;
                         case 3: outputList = true; break;
+                        case 4: custom_args = true; break;
                      //   case 4: if(++i<argc-1) memoryLimit = atoi(argv[i]); else retValue = 1; break;
                      //   case 5: benchmark = true; threads = 1; memoryLimit = 0; if(++i<argc-1) cpuMHZ = atoi(argv[i]); break;
                         
                     }
                     break;}
+                    //Experimental feature - Direct Lilypond argument supplication
+                    else { if(custom_args) {extra_commands += string(argv[i]) + " "; retValue = 0;} }
             
         }
         
